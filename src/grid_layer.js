@@ -13,6 +13,14 @@ function TimePlayer(min_date, end, step, options) {
     this.MAX_UNITS = options.steps + 2;
     this.MAX_VALUE = 0;
     this.MAX_VALUE_LOG = 0;
+
+    this.MAX_VALUE_1 = 0;
+    this.MAX_VALUE_1_LOG = 0;
+
+    this.MAX_VALUE_2 = 0;
+    this.MAX_VALUE_2_LOG = 0;
+
+
     this.BASE_UNIT = 0;
     this.canvas_setup = this.get_time_data;
     this.render = this.render_time;
@@ -22,6 +30,7 @@ function TimePlayer(min_date, end, step, options) {
     this.t_column = options.column;
     this.resolution = options.resolution;
     this.countby = options.countby
+    this.countby = options.countby2
     this.base_url = 'http://' + this.user + '.cartodb.com/api/v2/sql';
     this.options = options;
 }
@@ -40,6 +49,10 @@ TimePlayer.prototype.set_time = function (t) {
 TimePlayer.prototype.reset_max_value = function () {
     this.MAX_VALUE = 0;
     this.MAX_VALUE_LOG = 0;
+    this.MAX_VALUE_1 = 0;
+    this.MAX_VALUE_1_LOG = 0;
+    this.MAX_VALUE_2 = 0;
+    this.MAX_VALUE_2_LOG = 0;
 };
 /**
  * change table where the data is choosen
@@ -81,18 +94,27 @@ TimePlayer.prototype.pre_cache_months = function (rows, coord, zoom) {
     var xcoords;
     var ycoords;
     var values;
+    var values1;
+    var values2;
+
     if (typeof(ArrayBuffer) !== undefined) {
         xcoords = new Uint8Array(new ArrayBuffer(rows.length));
         ycoords = new Uint8Array(new ArrayBuffer(rows.length));
         values = new Uint8Array(new ArrayBuffer(rows.length * this.MAX_UNITS));// 256 months
+        values1 = new Uint8Array(new ArrayBuffer(rows.length * this.MAX_UNITS));// 256 months
+        values2 = new Uint8Array(new ArrayBuffer(rows.length * this.MAX_UNITS));// 256 months
     } else {
         // fallback
         xcoords = [];
         ycoords = [];
         values = [];
+        values1 = [];
+        values2 = [];
         // array buffer set by default to 0        
         for (var i = 0; i < rows.length * this.MAX_UNITS; ++i) {
             values[i] = 0;
+            values1[i] = 0;
+            values2[i] = 0;
         }
     }
     // base tile x, y
@@ -109,11 +131,18 @@ TimePlayer.prototype.pre_cache_months = function (rows, coord, zoom) {
         //def[row.sd[0]] = row.se[0];
         for (var j = 0; j < row.dates.length; ++j) {
             values[base_idx + row.dates[j]] = row.vals[j];
+            values1[base_idx + row.dates[j]] = row.vals[j];            
             if (row.vals[j] > this.MAX_VALUE) {
                 this.MAX_VALUE = row.vals[j];
                 this.MAX_VALUE_LOG = Math.log(this.MAX_VALUE);
+                this.MAX_VALUE_1 = row.vals[j];
+                this.MAX_VALUE_1_LOG = Math.log(this.MAX_VALUE);                
             }
-
+            values2[base_idx + row.dates[j]] = row.vals2[j];
+            if (row.vals2[j] > this.MAX_VALUE_2) {
+                this.MAX_VALUE_2 = row.vals2[j];
+                this.MAX_VALUE_2_LOG = Math.log(this.MAX_VALUE_2);
+            }
         }
         ;
         if (this.options.cumulative) {
@@ -127,13 +156,17 @@ TimePlayer.prototype.pre_cache_months = function (rows, coord, zoom) {
         }
     }
 
-    return {
+    var ret = {
         length:rows.length,
         xcoords:xcoords,
         ycoords:ycoords,
         values:values,
+        values1:values1,
+        values2:values2,
         size:1 << (this.resolution * 2)
     };
+
+    return ret;
 };
 
 // get time data in json format
@@ -158,11 +191,11 @@ TimePlayer.prototype.get_time_data = function (tile, coord, zoom) {
         "    ) as cell " +
         " ) " +
         " SELECT  " +
-        "    x, y, array_agg(c) vals, array_agg(d) dates " +
+        "    x, y, array_agg(c) vals, array_agg(e) vals2, array_agg(d) dates " +
         " FROM ( " +
         "    SELECT " +
         "      round(CAST (st_xmax(hgrid.cell) AS numeric),4) x, round(CAST (st_ymax(hgrid.cell) AS numeric),4) y, " +
-        "      {0} c, floor((date_part('epoch',{1})- {2})/{3}) d ".format(this.countby, this.t_column, this.MIN_DATE, this.step) +
+        "      {0} c, {4} e, floor((date_part('epoch',{1})- {2})/{3}) d ".format(this.countby, this.t_column, this.MIN_DATE, this.step, 'count(i.obama)') +
         "    FROM " +
         "        hgrid, {0} i ".format(this.table) +
         "    WHERE " +
@@ -203,7 +236,7 @@ TimePlayer.prototype.render_time = function (tile, coord, zoom) {
         return;
     }
 
-    var colors = [
+    var colors_red = [
         //"#FFFFE5",
         //"#FFF7BC",
         "#FEE391",
@@ -214,6 +247,25 @@ TimePlayer.prototype.render_time = function (tile, coord, zoom) {
         "#993404",
         "#662506"
     ];
+
+    var colors_blue = [
+        //"#FFFFE5",
+        //"#FFF7BC",
+        "#DBDCEE",
+        "#C7C9EE",
+        "#A8AAEE",
+        "#989BEE",
+        "#7075EE",
+        "#4046EE",
+        "#151DEE"
+    ];
+
+    var colors;
+    if(this.options.color == 'blue'){
+        colors = colors_blue;
+    } else {
+        colors = colors_red;
+    }   
 
     var fillStyle;
     // clear canvas    
@@ -236,16 +288,48 @@ TimePlayer.prototype.render_time = function (tile, coord, zoom) {
     var offset = Math.floor((pixel_size - 1) / 2);
     var tau = Math.PI * 2;
 
+    //RED to BLUE
+    // -MAX_VALUE_1, MAX_VALUE_2
+    //console.log(cells.values1.length);
+
+    // if (self.romney_scale == undefined){
+    //     self.romney_scale = new chroma.ColorScale({
+    //         colors: chroma.brewer.Reds,
+    //         limits: chroma.limits(cells.values1, 'quant', 3) 
+    //     });    
+    // }
+    
+    // if (self.obama_scale == undefined){
+    //     self.obama_scale = new chroma.ColorScale({
+    //         colors: chroma.brewer.Blues,
+    //         limits: chroma.limits(cells.values2, 'quant', 3) 
+    //         //limits: [0, this.MAX_VALUE_2]                
+    //     });
+    // }
+
+    //console.log(scale.size)
+/*
+    // array of spritemaps
+    if (self.indexes == undefined){
+        self.indexes = [];
+        for(var i = -this.MAX_VALUE_1; i <= this.MAX_VALUE_2; i++ ){
+            self.indexes.push(i);        
+        }        
+    }
+
+
     // memoize sprite canvases
     if (self.sprite_1 == undefined) {
         self.sprite_1 = [];
-        $(colors).each(function () {
+
+        $(self.indexes).each(function () {
             var canvas = document.createElement('canvas');
             var ctx = canvas.getContext('2d');
             ctx.width = canvas.width = pixel_size * 2;
             ctx.height = canvas.height = pixel_size * 2;
             ctx.globalAlpha = 1;
-            ctx.fillStyle = this.toString();
+            ctx.fillStyle = scale.getColor(this).toString();
+            //ctx.fillStyle = this.toString();
             ctx.beginPath();
             ctx.arc(pixel_size, pixel_size, pixel_size, 0, tau, true, true);
             ctx.closePath();
@@ -256,13 +340,14 @@ TimePlayer.prototype.render_time = function (tile, coord, zoom) {
 
     if (self.sprite_2 == undefined) {
         self.sprite_2 = [];
-        $(colors).each(function () {
+        $(self.indexes).each(function () {
             var canvas = document.createElement('canvas');
             var ctx = canvas.getContext('2d');
             ctx.width = canvas.width = pixel_size_trail_circ * 2;
             ctx.height = canvas.height = pixel_size_trail_circ * 2;
             ctx.globalAlpha = 0.3;
-            ctx.fillStyle = this.toString();
+            ctx.fillStyle = scale.getColor(this).toString();
+            //ctx.fillStyle = this.toString();
             ctx.beginPath();
             ctx.arc(pixel_size_trail_circ, pixel_size_trail_circ, pixel_size_trail_circ, 0, tau, true, true);
             ctx.closePath();
@@ -273,13 +358,14 @@ TimePlayer.prototype.render_time = function (tile, coord, zoom) {
 
     if (self.sprite_3 == undefined) {
         self.sprite_3 = [];
-        $(colors).each(function () {
+        $(self.indexes).each(function () {
             var canvas = document.createElement('canvas');
             var ctx = canvas.getContext('2d');
             ctx.width = canvas.width = pixel_size * 2;
             ctx.height = canvas.height = pixel_size * 2;
             ctx.globalAlpha = 0.3;
-            ctx.fillStyle = this.toString();
+            ctx.fillStyle = scale.getColor(this).toString();
+            //ctx.fillStyle = this.toString();
             ctx.beginPath();
             ctx.arc(pixel_size, pixel_size, pixel_size, 0, tau, true, true);
             ctx.closePath();
@@ -287,50 +373,110 @@ TimePlayer.prototype.render_time = function (tile, coord, zoom) {
             self.sprite_3.push(canvas);
         });
     }
+*/
 
 
     var numTiles = 1 << zoom;
-    for (i = 0; i < len; ++i) {
+    for (i = 0; i < len; ++i) {        
+        //console.log(cells.values2[this.MAX_UNITS * i + month]) 
         var cell = cells.values[this.MAX_UNITS * i + month];
-        if (cell) {
+
+        var cell1 = cells.values1[this.MAX_UNITS * i + month];
+        var cell2 = cells.values2[this.MAX_UNITS * i + month];
+        if (cell1 || cell2) {
             ci = cell == 0 ? 0 : Math.floor((colors.length - 1) * (Math.log(cell) / this.MAX_VALUE_LOG));
             if (ci != cu) {
                 cu = ci < colors.length ? ci : cu;
-                ctx.fillStyle = colors[cu];
+                //ctx.fillStyle = colors[cu];
             }
-            if (this.options.point_type == 'circle') {
-                ctx.drawImage(self.sprite_1[cu], xc[i] - pixel_size, yc[i] - pixel_size)
+
+            var size = 0;
+            // if equal, show 0
+            // if obama has more, use obama_scale
+            // if romney has more, use romney_scale
+            if(cell1 == cell2){
+                ctx.fillStyle = '#888';                
+            } else {
+                if(cell1 > cell2){
+                    //console.log(cell1);
+                    ctx.fillStyle = '#CB181D';
+                    //size=(cell1/self.MAX_VALUE)+1;
+                    size=(cell1/5)+1;
+                    //console.log(self.romney_scale.getColor(cell1).toString());
+                    //ctx.fillStyle = self.romney_scale.getColor(cell1).toString();
+                }
+                if(cell2 > cell1){
+                    ctx.fillStyle = '#2B8CBE';
+                    
+                    size=(cell2/5)+1;
+                    //console.log(self.obama_scale.getColor(cell1).toString());
+                    //ctx.fillStyle = self.obama_scale.getColor(cell2).toString();
+                }
+            }
+
+
+            // var R = Math.floor((128/this.MAX_VALUE_1) * cell1)+128; 
+            // var G = 128;
+            // var B = Math.floor((128/this.MAX_VALUE_2) * cell2)+128;
+
+            // ctx.fillStyle = "rgba("+R+","+G+","+B+",1)";    
+
+            //console.log("RED:" + R + ". BLUE:" + B);
+            //console.log(ctx.fillStyle);    
+
+            if (this.options.point_type == 'circle') {                
+                //ctx.drawImage(self.sprite_1[inx], xc[i] - pixel_size, yc[i] - pixel_size)    
+                
+            ctx.globalAlpha = 0.8;                    
+            ctx.beginPath();
+            ctx.arc(xc[i] - pixel_size, yc[i] - pixel_size, 3*size, 0, tau, true, true);
+            ctx.closePath();
+            ctx.fill();
+
             } else if (this.options.point_type == 'square') {
                 ctx.fillRect(xc[i] - offset, yc[i] - offset, pixel_size, pixel_size);
             }
         }
 
         if (this.options.trails == true) {
-
-            cell = cells.values[this.MAX_UNITS * i + month - 1];
-            if (cell) {
-                ci = cell == 0 ? 0 : Math.floor((colors.length - 1) * (Math.log(cell) / this.MAX_VALUE_LOG));
-                if (ci != cu) {
-                    cu = ci < colors.length ? ci : cu;
-                    ctx.fillStyle = colors[cu];
-                }
+            var cell1 = cells.values1[this.MAX_UNITS * i + month -1];
+            var cell2 = cells.values2[this.MAX_UNITS * i + month -1];
+            
+            if (cell1 || cell2) {
+                // ci = cell == 0 ? 0 : Math.floor((colors.length - 1) * (Math.log(cell) / this.MAX_VALUE_LOG));
+                // if (ci != cu) {
+                //     cu = ci < colors.length ? ci : cu;
+                //     ctx.fillStyle = colors[cu];
+                // }
                 if (this.options.point_type == 'circle') {
+                     ctx.globalAlpha = 0.4;                    
+                     ctx.beginPath();
+                     ctx.arc(xc[i] - pixel_size, yc[i] - pixel_size, 5*size, 0, tau, true, true);
+                     ctx.closePath();
+                     ctx.fill();
                     //alignment hack - sorry to the gods of graphics
-                    ctx.drawImage(self.sprite_2[cu], xc[i] - pixel_size_trail_squa - 1, yc[i] - pixel_size_trail_squa - 1)
+                    //ctx.drawImage(self.sprite_2[cu], xc[i] - pixel_size_trail_squa - 1, yc[i] - pixel_size_trail_squa - 1)
                 } else if (this.options.point_type == 'square') {
                     ctx.fillRect(xc[i] - offset, yc[i] - offset, pixel_size_trail_squa, pixel_size_trail_squa);
                 }
             }
 
-            cell = cells.values[this.MAX_UNITS * i + month - 2];
-            if (cell) {
-                ci = cell == 0 ? 0 : Math.floor((colors.length - 1) * (Math.log(cell) / this.MAX_VALUE_LOG));
-                if (ci != cu) {
-                    cu = ci < colors.length ? ci : cu;
-                    ctx.fillStyle = colors[cu];
-                }
+            var cell1 = cells.values1[this.MAX_UNITS * i + month -2];
+            var cell2 = cells.values2[this.MAX_UNITS * i + month -2];
+            
+            if (cell1 || cell2) {
+                // ci = cell == 0 ? 0 : Math.floor((colors.length - 1) * (Math.log(cell) / this.MAX_VALUE_LOG));
+                // if (ci != cu) {
+                //     cu = ci < colors.length ? ci : cu;
+                //     ctx.fillStyle = colors[cu];
+                // }
                 if (this.options.point_type == 'circle') {
-                    ctx.drawImage(self.sprite_3[cu], xc[i] - pixel_size, yc[i] - pixel_size)
+                    ctx.globalAlpha = 0.3;                    
+                    ctx.beginPath();
+                    ctx.arc(xc[i] - pixel_size, yc[i] - pixel_size, 2*size, 0, tau, true, true);
+                    ctx.closePath();
+                    ctx.fill();
+                    //ctx.drawImage(self.sprite_3[cu], xc[i] - pixel_size, yc[i] - pixel_size)
                 } else if (this.options.point_type == 'square') {
                     ctx.fillRect(xc[i] - offset, yc[i] - offset, pixel_size, pixel_size);
                 }

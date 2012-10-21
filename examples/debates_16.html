@@ -9,16 +9,19 @@
     <link rel="stylesheet" href="../lib/cartodb.css">
     <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
     <script type="text/javascript" src="http://maps.googleapis.com/maps/api/js?sensor=false"></script>
+    <script type="text/javascript" src="https://raw.github.com/gka/chroma.js/master/dist/chroma.pack.min.js"></script>
     <script type="text/javascript" src="../lib/wax.g.js"></script>
     <script type="text/javascript" src="../lib/cartodb-gmapsv3.js"></script>
     <script type="text/javascript" src="../lib/dat.gui.min.js"></script>
     <script type="text/javascript" src="../lib/underscore-min.js"></script>
     <script type="text/javascript" src="../lib/backbone.js"></script>
     <script type="text/javascript" src="../lib/class.js"></script>
-    <script type="text/javascript" src="../lib/backbone.cartodb.js"></script>
+    <script type="text/javascript" src="../lib/backbone.cartodb.js"></script>  
     <script type="text/javascript" src="../src/canvas_tile_layer.js"></script>
-    <script type="text/javascript" src="../src/grid_layer.js"></script>
+    <script type="text/javascript" src="../src/grid_layer.js"></script>    
     <script type="text/javascript" src="../src/torque.js"></script>
+    
+
     <script type="text/javascript">
     var gui;
     function initialize() {
@@ -59,18 +62,22 @@
         map.setOptions({styles:map_style.google_maps_customization_style});
 
         var TorqueOptions = {
-            user: "viz2",
-            table: "milkyway_time",
+            user: "osm2",
+            table: "election_tweet",
             column: "class_time",
-            cumulative: false,
-            resolution: 2,
-            steps: 750,
-            fps: 20,
-            fitbounds: false,
-            clock: false,
+            cumulative: true,
+            resolution: 16,
+            steps: 10000,
+            fps: 15,
+            fitbounds: true,
+            clock: true,
             blendmode: 'lighter',
             trails: true,
-            point_type:'circle'
+            point_type:'circle',
+            countby:'count(i.obama)',
+            countby2:'count(i.romney)',
+            subtitles: true,
+            color:"blue"
         }
 
         var torque = null;
@@ -79,36 +86,15 @@
             torque = new Torque.app.addLayer(map, TorqueOptions);
             Torque.env = env;
         });
-
-        //  var TorqueOptions = {
-        //     user: "viz2",
-        //     table: "milkyway_time",
-        //     column: "class_time",
-        //     cumulative: false,
-        //     resolution: 2,
-        //     steps: 750,
-        //     fps: 20,
-        //     fitbounds: false,
-        //     clock: false,
-        //     blendmode: 'lighter',
-        //     trails: true,
-        //     point_type:'circle'
-        // }
-
-        // var torque = null;
-        // Torque(function (env) {
-        //     Torque.app = new env.app.Instance();
-        //     torque = new Torque.app.addLayer(map, TorqueOptions);
-        //     Torque.env = env;
-        // });
-
     
     }
     </script>
 </head>
 <body onload="initialize()">
-    <div id="map_canvas"></div>
+    <div id="map_canvas"></div>    
     <div class="torque_time"></div>
+    <div class="torque_subs_speaker"></div>    
+    <div class="torque_subs"></div>    
     <a class="cartodb_logo" href="http://www.cartodb.com" target="_blank">CartoDB</a>
 </body>
 </html>

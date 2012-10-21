@@ -1,0 +1,45 @@
+distance between all junctions first
+distance from stations to junctions
+distances from station to station
+  
+
+
+312471327 = sum of US population
+
+
+# firstly, all 52 states have 1
+UPDATE state_2010census_dp1 SET num_points = 1
+
+# this leaves 48 remaining points to split between remaining states based on population
+
+# number of points per state
+UPDATE state_2010census_dp1 SET num_points = num_points+round(((population::float)/(312471327::float/48::float)))
+
+#
+SELECT sum(num_points) from  state_2010census_dp1
+
+
+
+# random points for 
+
+
+
+# collectors over 10 major cities
+
+
+
+
+
+# 3 approaches
+
+1. Cities + buffer out
+2. Grid 98 cells (1 cell for Hawaii, 1 for Alaska) - get extent of US excluding these and make equal area grid
+3. Something fancy with the states
+
+
+# ok, cities it is...
+
+# Get most populated city in each state and place point on it. (take city out of working set)
+# for remaning 48 cities, sort cities by population and place points on them until no points left
+# for radius, buffer out by 
+
